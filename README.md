@@ -1,45 +1,54 @@
 # Breast Cancer Survival Classification
 
-Alive/dead prediction for breast cancer patients with Random Forest and XGBoost, SMOTE and tuning. The focus is recall on the minority class (dead), where a miss is costly.
+Predicts death from any cause in SEER breast cancer patients using features known at diagnosis. A calibrated logistic regression on engineered features reaches a test ROC AUC of 0.75, with two operating points: max-F1 and 80 % recall.
 
 ## Dataset
 
-- Breast cancer patient dataset (Kaggle origin); the notebook loads a public GitHub copy.
-- 4,024 rows, 16 columns.
-- Target: `Status`, alive = 0, dead = 1. About 15% dead (616 patients).
+SEER breast cancer data, 4,024 patients, 616 deceased (15 %). Source (save as `data.xlsx`): https://github.com/WEEDUENHEH/Breast-cancer-dataset/raw/9c577ad0fb9e3b5e269b7f12ba86d39a87e6180c/Breast_Cancer_dataset_.xlsx.
+
+Survival Months is excluded because follow-up length depends on the outcome; all other features are known at diagnosis.
 
 ## Approach
 
-- Cleaning: dropped `Marital Status`, mapped `Grade`. No missing values.
-- Features actually used: the 5 numeric columns, standardised with `StandardScaler`. One-hot encoded columns are created but not passed to the models.
-- 80/20 split (`random_state=42`, 805 test rows: 682 alive, 123 dead).
-- SMOTE on the training split only.
-- Tuning: GridSearchCV and RandomizedSearchCV (Random Forest), stratified 5-fold GridSearchCV (XGBoost).
+- Features engineered: ordinal T, N, stage and grade; receptor flags; log tumour size; log positive nodes; node ratio.
+- Pipelines compared with 5x5 repeated stratified CV: one-hot logistic regression as reference, engineered logistic regression, class weights, SMOTE, splines, interactions, boosting, ensemble.
+- Thresholds chosen in nested CV.
+- Held-out test set (805 patients) used once.
 
-## Results (test set, class "dead")
+## Results
 
-| Model | Accuracy | Precision | Recall | F1 |
+Cross-validation (25 folds):
+
+| Candidate | ROC AUC | PR AUC | F1 |
+|---|---|---|---|
+| Reference: LR, one-hot | .740 | .400 | .405 |
+| LR, engineered (chosen) | .744 | .400 | .406 |
+| LR, engineered + splines | .747 | .401 | .404 |
+| LightGBM (best of 2) | .741 | .389 | .402 |
+
+Test set, 95 % bootstrap CIs:
+
+| Model | ROC AUC | PR AUC | F1 | Recall |
 |---|---|---|---|---|
-| Random Forest, default | 0.89 | 0.71 | 0.46 | 0.56 |
-| Random Forest, GridSearchCV | 0.87 | 0.58 | **0.61** | 0.60 |
-| Random Forest, RandomizedSearchCV | 0.88 | 0.62 | 0.60 | **0.61** |
-| XGBoost, default | 0.89 | 0.71 | 0.50 | 0.58 |
-| XGBoost, tuned (SMOTE pipeline) | 0.85 | 0.51 | 0.60 | 0.55 |
+| Reference, thr 0.5 | .749 [.70, .79] | .40 | .40 | .65 |
+| Chosen, max-F1 (0.19) | .750 [.71, .79] | .42 [.34, .51] | .40 [.33, .47] | .56 |
+| Chosen, 80 % recall (0.10) | .750 [.71, .79] | .42 [.34, .51] | .37 | .83 [.76, .89] |
 
-XGBoost tuned confusion matrix: [[611, 71], [49, 74]]. AUC 0.83 is reported for an XGBoost SMOTE pipeline with default parameters. Tuned-model differences are small on 123 positive cases.
+The simplest model within one standard error of the best is chosen.
 
-## Caveats
+## Interpretation
 
-- The notebook's SVM section is trained on a synthetic `make_classification` dataset, not this data. Its recall of 0.83 and its "SVM is best" conclusion are invalid and are not in the table above.
-- `Survival Months` is a feature and may leak outcome information.
-- Scaling was fitted before the split.
-- Single split, no confidence intervals; some notebook commentary does not match its printed outputs (63% versus 61% recall).
-- Not a clinical tool.
+Probabilities are calibrated (Brier 0.113). Grade, T stage, positive nodes, node ratio and age raise the odds of death; ER and PR positivity lower them.
+
+## Limitations and next step
+
+About a quarter of surviving patients have short follow-up, so the label is noisy; survival analysis is the next step. No external validation; not for clinical use.
 
 ## How to run
 
-Run the notebook in Colab or Jupyter. Needs pandas, scikit-learn, imbalanced-learn, xgboost, seaborn, openpyxl.
+```
+pip install numpy pandas scikit-learn imbalanced-learn lightgbm matplotlib openpyxl jupyter
+jupyter nbconvert --execute --to notebook --inplace breast_cancer_survival.ipynb
+```
 
-## Context
-
-Coursework project, Master of Data Science, University of Malaya, 2024.
+Coursework project, Master of Data Science, University of Malaya (2024); updated 2026.
